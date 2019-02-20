@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang='en'>
+
+<head>
+  <meta charset="utf-8" />
+  <title>Pictionary fun :)</title>
+  <link rel="stylesheet" href="stylesheet.css">
+  <!-- Bootstrap initiation -->
+  <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Socket.io Initiation -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="text/javascript">
+    //initialize global variables
+    var username = "user";
+    var socketio = io.connect();
+    var rooms = [];
+    var currentRoomName = "lobby";
+    var drawer = false;
+    
+    //handles displaying main lobby page
+    socketio.on("rooms_list", function (data) {
+      //toggle visibilities
+      document.getElementById("displayUsername").innerHTML = "<h2>Welcome " + username + "!</h2> <br/>";
+      document.getElementById("displayUsername").innerHTML += "<mark>Click a room to join or create your own!</mark>";
+      document.getElementById("createRoom").hidden = false;
+      document.getElementById("roomsList").hidden = false;
+      document.getElementById("leaveRoomButton").hidden = true;
+      document.getElementById("drawing").hidden = true;
+      //create list of rooms
+      rooms = data['rooms'];
+      document.getElementById("roomsList").innerHTML = "";
+      let theRooms = document.createElement('ul');
+      for (let i in rooms) {
+        let thisRoom = document.createElement('li');
+        thisRoom.classList.add('list-group-item');
+        thisRoom.href = "#";
+        thisRoom.appendChild(document.createTextNode(rooms[i].name));
+        thisRoom.addEventListener('click', function () {
+          if (rooms[i].passwordBool == false) {
+            joinRoom(rooms[i].name);
+          }
+          else {
+            joinpwRoom(rooms[i]);
+          }
+        });
+        theRooms.appendChild(thisRoom);
+      }
+      document.getElementById("roomsList").appendChild(theRooms);
+    });
+    //handles displaying chat room pages
+    socketio.on("player_joined", function (data) {
+      joinOrLeave(data, false, false);
+
+    });
+    function joinOrLeave(data, round_start, waiting) {
+      //handles updating rooms on server events
+      // console.log(data.room);
+      //toggle visibilities
+      document.getElementById("reactDiv").hidden = true;
+      document.getElementById("drawing").hidden = false;
+      //clear drawing on round start
+      if (round_start == true) {
+        clear();
+      }
+      //client is the drawer
+      if (data.room.users[data.room.drawerIndex] == username || waiting == true) {
+        drawer = true;
+        document.getElementById("guess").hidden = true;
+        document.getElementById("colors").hidden = false;
+      }
+      else {  //client is the guesser
+        document.getElementById("colors").hidden = true;
+        document.getElementById("guess").hidden = false;
+        drawer = false;
+      }
+      //Displays room information
+      currentRoomName = data['room'].name;
+      let info = document.getElementById("displayUsername");
+      info.innerHTML = "<p><h3>Welcome " + username + " to " + data['room'].name + "</h3></p>";
+      info.innerHTML += "Room created by: " + data['room'].creator;
+      info.innerHTML += " | Connected Users: ";
+      //user list/scores
+      for (let i in data['room'].users) {
+        info.innerHTML += data['room'].users[i] + " (" + data['room'].scores[data['room'].users[i]] + "), ";
+      }
+      //more drawer/not drawer/waiting display logic for room info.innerHTML
+      if (data.room.users[data.room.drawerIndex] == username && waiting == false) {
+        info.innerHTML += "<p><h4>Draw: " + data['room'].word + "</h4></p>";
+      }
+      else if(waiting == false){
+        info.innerHTML += "<p><h4>" + data.room.users[data.room.drawerIndex] + " is Drawing!</h4></p>";
+      }
+      if (waiting == true) {
+        info.innerHTML += "<p><h4>Waiting for players" + "</h4></p>";
+      }
+      if (data.prev_winner != null) {
+        info.innerHTML += "<h5><mark>" +data.prev_winner + " Correctly Guessed " + data.prev_word + "! </mark></h5>";
+      }
+      
+     
+      //toggle visibilities just in case
+      document.getElementById("createRoom").hidden = true;
+      document.getElementById("roomsList").hidden = true;
+      document.getElementById("leaveRoomButton").hidden = false;
+      document.getElementById("drawing").hidden = false;
+
+
+    }
+    //updates room info.innerHTML and clears guesses for round start
+    socketio.on("start_round", function (data) {
+      document.getElementById("guesses").innerHTML = "<h4>Guesses: </h4><br>";
+      joinOrLeave(data, true, false);
+    });
+    //updates room when less than 2 players
+    socketio.on("waiting_for_players", function (data) {
+      joinOrLeave(data, false, true);
+    });
+    //self explanatory alerts from server
+    socketio.on("winner", function (data) {
+      alert(data.user + " Correctly Guessed" + data.word + " !");
+    });
+    socketio.on("username_taken", function () {
+
+      alert("Username Taken");
+      document.location.reload();
+
+    });
+    //clears canvas for all users in the room
+    socketio.on("clear", function () {
+      let canvas = document.getElementById('drawingCanvas');
+      let context = canvas.getContext('2d');
+      context.clearRect(0, 0, canvas.width, canvas.height);
+    });
+    //adds wrong guess to list and scrolls div to bottom
+    socketio.on("wrong_guess", function(data){
+      document.getElementById("guesses").innerHTML += data.user + ": " + data.guess + "<br> ";
+      document.getElementById("guesses").scrollTop = document.getElementById("guesses").scrollHeight;
+    });
+    //join room emitter
+    function joinRoom(roomName) {
+      socketio.emit("join_room", { "name": roomName, "username": username });
+    }
+    
+    //sends user guess to server
+    function submitGuess() {
+      let guess = document.getElementById("guessText").value;
+      document.getElementById("guessText").value = "";
+      socketio.emit("guess", { "user": username, "guess": guess, "room": currentRoomName });
+    }
+    //clear button method, clears and sends signal to server to clear for whole room
+    function clearBtn(){
+      let canvas = document.getElementById('drawingCanvas');
+      let context = canvas.getContext('2d');
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      socketio.emit("clear", {"room": currentRoomName});
+  }
+  </script>
+</head>
+<body>
+  <!-- react div for partial view handling -->
+  <div id="reactDiv"></div>
+  <!-- Non-react elements controlled by normal js -->
+  <div id="leaveRoomButton" hidden>
+    <button onclick="leaveRoom()" type="button" class="btn btn-danger">Leave Room</button>
+  </div>
+  <div id="displayUsername"></div>
+  <div id="displayRoom"></div>
+  <div id="roomsList" hidden></div>
+  <div id="createRoom" hidden>
+    Create Public Room: <br />
+    Name: <input type="text" id="createRoomName" />
+    <button id="createRoomButton" onclick="createRoom()" type="button" class="btn btn-success">Create</button>
+  </div>
+  <!-- drawing div -->
+  <div id="drawing" hidden>
+      <div id="colors" class="colors">
+          Choose Color:
+          <div class="color black"></div>
+          <div class="color brown"></div>
+          <div class="color red"></div>
+          <div class="color yellow"></div>
+          <div class="color green"></div>
+          <div class="color blue"></div>
+          
+          <button id="clearCanvas" onclick="clearBtn()" type="button" class="btn btn-warning">Start Over</button>
+        </div>
+        <div id="guess">
+            Enter Guess: <input type="text" id="guessText" />
+            <button id="guessButton" onclick="submitGuess()" type="button" class="btn btn-primary">Guess</button>
+          </div>
+    <canvas id="drawingCanvas" class="whiteboard" width="750" height="350"></canvas>
+    <div id="guesses" class="guesses"></div>
+    
+  </div>
+<!-- react imports -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/15.4.2/react.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/15.4.2/react-dom.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/6.21.1/babel.min.js"></script>
+  <!-- react script handles initial views (login, room display) -->
+  <script type="text/babel">
+
+class Main extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      value: '',
+      page: "login",
+      currentRoomName: "lobby",
+      username: "user",
+      drawer: false
+    };
+      this.handleChange = this.handleChange.bind(this);
+      this.handleSubmit = this.handleSubmit.bind(this);
+  }
+  handleChange(event) {
+    this.setState({value: event.target.value});
+  }
+
+  handleSubmit(event) {
+    // console.log("handleSubmit");
+    let newUsername = this.state.value;
+    if (newUsername == "") {
+      alert("please enter a valid username");
+    }
+    else {
+      username = newUsername;
+      this.setState(() => {
+        // console.log("setState");
+        return{
+        page: "lobby",
+        currentRoomName: "lobby",
+        username: newUsername,
+        drawer: false
+        };
+      });
+      socketio.emit("get_rooms", { "username": username, "firsttime": true });
+     
+    }
+    event.preventDefault();
+  }
+  render() {
+    // console.log("render");
+    // console.log(this.state);
+    if(this.state.page == "login"){
+      return(
+        <div>
+        <h1>Online Pictionary :)</h1>
+        <div>
+          <input type="text" id="username" value={this.state.value} onChange={this.handleChange}/>
+          <div id="usernameButton">
+            <button onClick={this.handleSubmit} >Set Username</button>
+          </div>
+        </div>
+        </div>
+      );
+    }
+    else if(this.state.page == "lobby"){
+      return(
+        <div>
+        <h1>Logged In As: {this.state.username}</h1>
+        </div>
+      );
+    }
+    else if(this.state.page == "room"){
+      return;
+    }
+    else{
+    }
+    
+  }
+}
+
+// ========================================
+
+ReactDOM.render(
+  <Main />,
+  document.getElementById('reactDiv')
+);
+</script>
+<!-- more regular js script stuff -->
+ <script type="text/javascript">
+  
+  //room creator functions, sent to server
+  function createRoom() {
+    let roomName = document.getElementById("createRoomName").value;
+    if (roomName == "") {
+      alert("room must have a valid name");
+    }
+    else {
+      document.getElementById("createRoomName").value = "";
+      socketio.emit("create_new_room", { "roomName": roomName, "username": username });
+    }
+  }
+  //adds event listner to guess text box to submit on enter, used w3c schools code
+  document.getElementById('guessText').addEventListener("keyup", function(event) {
+  // Cancel the default action, if needed
+    event.preventDefault();
+  // Number 13 is the "Enter" key on the keyboard
+  if (event.keyCode === 13) {
+    // Trigger the button element with a click
+    submitGuess();
+  }
+});
+  //leave handler
+  function leaveRoom() {
+    socketio.emit("leave_room", { "username": username, "room": currentRoomName });
+    currentRoomName = "defaultRoom";
+    clear();
+    document.getElementById("drawing").hidden = true;
+    document.getElementById("reactDiv").hidden = false;
+    socketio.emit("get_rooms", { "username": username, "firsttime": false });
+  }
+</script>
+<!-- Script for handling canvas drawing, starter code taken from socket.io whiteboard example -->
+<script type="text/javascript">
+  //initialize useful variables, set canvas width and height
+  var canvas = document.getElementById('drawingCanvas');
+  var colors = document.getElementsByClassName('color');
+  var context = canvas.getContext('2d');
+  canvas.width = 750;
+  canvas.height = 350;
+
+  var current = {
+    color: 'black'
+  };
+  var drawing = false;
+  //add listeners to canvas and colors
+  canvas.addEventListener('mousedown', onMouseDown, false);
+  canvas.addEventListener('mouseup', onMouseUp, false);
+  canvas.addEventListener('mouseout', onMouseUp, false);
+  canvas.addEventListener('mousemove', throttle(onMouseMove, 10), false);
+
+  for (var i = 0; i < colors.length; i++) {
+    colors[i].addEventListener('click', onColorUpdate, false);
+  }
+  //on recieving drawing data from server
+  socketio.on('drawing', onDrawingEvent);
+  //clear canvas function
+  function clear() {
+    context.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  //draws a line on canvas between given coordinates
+  function drawLine(x0, y0, x1, y1, color, emit) {
+    var offset = canvas.offsetTop;
+    var xoffset = canvas.offsetLeft;
+
+    // console.log(offset);
+    context.beginPath();
+    context.moveTo(x0- xoffset, y0 - offset);
+    context.lineTo(x1 -xoffset, y1 - offset);
+    context.strokeStyle = color;
+    context.lineWidth = 2;
+    context.stroke();
+    context.closePath();
+
+    if (!emit) { return; }
+    var w = canvas.width;
+    var h = canvas.height;
+
+    //emit drawing to server
+    socketio.emit('drawing', {
+      x0: (x0),
+      y0: (y0),
+      x1: (x1),
+      y1: (y1),
+      color: color,
+      room: currentRoomName
+    });
+  }
+//start drawing on mouse down
+  function onMouseDown(e) {
+    if (drawer == true) {
+      drawing = true;
+      current.x = e.clientX;
+      current.y = e.clientY;
+    }
+
+  }
+//stop drawing on mouse up
+  function onMouseUp(e) {
+    if (drawer == true) {
+      if (!drawing) { return; }
+      drawing = false;
+      drawLine(current.x, current.y, e.clientX, e.clientY, current.color, true);
+    }
+
+  }
+//draw when moving mouse if mouse is down
+  function onMouseMove(e) {
+    if (drawer == true) {
+      if (!drawing) { return; }
+      drawLine(current.x, current.y, e.clientX, e.clientY, current.color, true);
+      current.x = e.clientX;
+      current.y = e.clientY;
+    }
+
+  }
+//update color
+  function onColorUpdate(e) {
+    current.color = e.target.className.split(' ')[1];
+  }
+  // limit the number of events per second
+  function throttle(callback, delay) {
+    var previousCall = new Date().getTime();
+    return function () {
+      var time = new Date().getTime();
+
+      if ((time - previousCall) >= delay) {
+        previousCall = time;
+        callback.apply(null, arguments);
+      }
+    };
+  }
+  //draws line with parameters from data
+  function onDrawingEvent(data) {
+    // console.log(data);
+    var w = canvas.width;
+    var h = canvas.height;
+    // console.log(w);
+    // console.log(h);
+    drawLine(data.x0 , data.y0 , data.x1 , data.y1 , data.color);
+  }
+</script>
+<!-- more bootstrap stuff -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+<!-- Latest compiled JavaScript -->
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+</body>
+</html>

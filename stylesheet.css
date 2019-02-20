@@ -1,0 +1,48 @@
+/*Some css taken from example projects (whiteboard and w3c schools)*/
+
+  body{
+      text-align:left;
+      padding:5px;
+  }
+  /*Canvas css*/
+  .whiteboard {
+    text-align:left;
+    height: 350px;
+    width: 750px;
+    padding: 5px;
+     position: absolute; 
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: 240px;
+    border:1px solid black;
+  }
+/*guess box css*/
+  .guesses{
+	width: 200px;
+	height: 380px;
+	overflow: auto;
+	border: 5px solid gray;
+	padding: 3px;
+    box-align:right;
+    position: absolute;
+    left: 760px;
+    top: 300 px;
+}
+  
+  /* color selector CSS*/
+  .color {
+    display: inline-block;
+    height: 48px;
+    width: 48px;
+  }
+  
+  .color.black { background-color: black; }
+  .color.brown {background-color: brown;}
+  .color.red { background-color: red; }
+  .color.green { background-color: green; }
+  .color.blue { background-color: blue; }
+  .color.yellow { background-color: yellow; }
+
+
+
